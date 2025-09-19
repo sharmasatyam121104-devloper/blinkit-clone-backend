@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 import morgan from "morgan";
 import helmet from "helmet";
 import connectDB from "./config/db.js";
+import userRouter from "./routes/user.route.js";
 
 const app = express();
 
@@ -18,14 +19,14 @@ app.use(
 
 app.use(express.json());
 app.use(cookieParser());
-app.use(morgan());
+app.use(morgan("dev"));
 app.use(
   helmet({
     crossOriginEmbedderPolicy: false,
   })
 );
 
-const PORT = 8080 || process.env.PORT;
+const PORT = process.env.PORT || 8080;
 
 app.get("/", (req, res) => {
   res.json({
@@ -33,8 +34,10 @@ app.get("/", (req, res) => {
   });
 });
 
+app.use('/api/users', userRouter);
+
 connectDB().then(() => {
   app.listen(PORT, () => {
-    console.log("Server is running on", PORT);
+    console.log("✅ Server is running on", PORT);
   });
 });
