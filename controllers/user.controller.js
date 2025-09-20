@@ -5,6 +5,7 @@ import verifyEmailTemplates from "../utils/verifyEmailTemplates.js";
 import bcrypt from "bcryptjs";
 import generateAccessToken from "../utils/genratedAccessToken.js";
 import generateRefreshToken from "../utils/genratedRefreshToken.js";
+import uploadImageCloudinary from "../utils/uploadImageCloudinary.js";
 
 export const registerUserController = async (req, res) => {
   try {
@@ -233,6 +234,56 @@ export const logoutController = async (req, res) => {
       success: false,
       error: true,
       message: error.message || "Internal server error",
+    });
+  }
+};
+
+
+// Upload user avatar
+export const avatarController = async (req, res) => {
+  try {
+    const userId = req.userId; // auth middleware
+    const image = req.file;    // multer middleware
+
+    if (!image) {
+      return res.status(400).json({
+        message: "No image file uploaded",
+        success: false,
+        error: true
+      });
+    }
+
+    const upload = await uploadImageCloudinary(image);
+
+    const updatedUser = await UserModel.findByIdAndUpdate(
+      userId,
+      { avatar: upload.url },
+      { new: true } // updated document return karne ke liye
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        message: "User not found",
+        success: false,
+        error: true
+      });
+    }
+
+    return res.status(200).json({
+      message: "Profile avatar uploaded successfully",
+      success: true,
+      error: false,
+      data: {
+        _id: userId,
+        avatar: upload.url
+      }
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message || "Internal server error",
+      success: false,
+      error: true
     });
   }
 };
