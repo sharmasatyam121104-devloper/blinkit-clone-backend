@@ -202,3 +202,37 @@ export const loginController = async (req, res) => {
     });
   }
 };
+
+
+//logout controller
+
+export const logoutController = async (req, res) => {
+  try {
+    const userId = req.userId; // middleware se aata hai
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // true only in prod
+      sameSite: "None",
+    };
+
+    // Clear cookies
+    res.clearCookie("accessToken", cookieOptions);
+    res.clearCookie("refreshToken", cookieOptions);
+
+    // Remove refresh token from DB
+    await UserModel.findByIdAndUpdate(userId, { refresh_token: "" });
+
+    return res.status(200).json({
+      success: true,
+      error: false,
+      message: "Logout successful",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: true,
+      message: error.message || "Internal server error",
+    });
+  }
+};
