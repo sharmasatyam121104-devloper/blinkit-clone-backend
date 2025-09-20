@@ -184,6 +184,10 @@ export const loginController = async (req, res) => {
     };
     res.cookie("accessToken", accessToken, cookieOptions);
     res.cookie("refreshToken", refreshToken, cookieOptions);
+    
+     // Send success response
+     user.last_login_date = new Date(); // 👈 update login date
+    await user.save();
 
     // Send success response
     return res.status(200).json({
@@ -193,6 +197,8 @@ export const loginController = async (req, res) => {
       data: {
         accessToken,
         refreshToken,
+       last_login_date: user.last_login_date, //  return karo response me
+
       },
     });
   } catch (error) {
@@ -284,6 +290,55 @@ export const avatarController = async (req, res) => {
       message: error.message || "Internal server error",
       success: false,
       error: true
+    });
+  }
+};
+
+//updated user details
+
+export const updateUserDetails = async (req, res) => {
+  try {
+    const userId = req.userId; // from auth middleware
+    const { name, email, mobile, password } = req.body;
+
+    let hashPassword = "";
+    if (password) {
+      // Hash password
+      const salt = await bcryptjs.genSalt(10);
+      hashPassword = await bcryptjs.hash(password, salt);
+    }
+
+    const updatedUser = await UserModel.findByIdAndUpdate(
+      userId,
+      {
+        ...(name && { name }),
+        ...(email && { email }),
+        ...(mobile && { mobile }),
+        ...(password && { password: hashPassword }),
+      },
+      { new: true } // return updated document
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        message: "User not found",
+        error: true,
+        success: false,
+      });
+    }
+
+    return res.status(200).json({
+      message: "User details updated successfully",
+      error: false,
+      success: true,
+      data: updatedUser,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Internal server error while updating profile details",
+      error: true,
+      success: false,
+      details: error.message, // optional: send only message
     });
   }
 };
