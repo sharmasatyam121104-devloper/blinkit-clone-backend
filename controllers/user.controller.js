@@ -6,6 +6,9 @@ import bcrypt from "bcryptjs";
 import generateAccessToken from "../utils/genratedAccessToken.js";
 import generateRefreshToken from "../utils/genratedRefreshToken.js";
 import uploadImageCloudinary from "../utils/uploadImageCloudinary.js";
+import genrateOTP from "../utils/genrateOTP.js";
+import forgotPasswordTemplate from "../utils/forgotPasswordTamplates.js";
+import jwt from 'jsonwebtoken'
 
 export const registerUserController = async (req, res) => {
   try {
@@ -339,6 +342,229 @@ export const updateUserDetails = async (req, res) => {
       error: true,
       success: false,
       details: error.message, // optional: send only message
+    });
+  }
+};
+
+
+//forgot password not login
+
+export const forgotPasswordController = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Check if user exists
+    const user = await UserModel.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        message: "User with this email does not exist.",
+        error: true,
+        success: false,
+      });
+    }
+
+    // Generate OTP and expiry
+    const otp = genrateOTP();
+    const expireTime = Date.now() + 60 * 60 * 1000; // 1 hour from now
+
+    await UserModel.findByIdAndUpdate(
+      user._id,
+      {
+        forgot_password_otp: otp,
+        forgot_password_expiry: new Date(expireTime), // direct Date object
+      },
+      { new: true }
+    );
+
+    // Send OTP email
+    await sendEmail({
+      sendTo: email,
+      subject: "Password Reset OTP - Satyam Store",
+      html: forgotPasswordTemplate({
+        name: user.name,
+        otp: otp,
+      }),
+    });
+
+    return res.status(200).json({
+      message: "Password reset OTP has been sent to your email. Please check your inbox.",
+      error: false,
+      success: true,
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      message: `Internal server error in forgot password: ${error.message || error}`,
+      error: true,
+      success: false,
+    });
+  }
+};
+
+
+//verify forgot password otp
+
+export const verifyForgotPasswordOtp = async(req,res)=>{
+  try {
+     const {email , otp} = req.body;
+      // Check if user exists
+      if(!email || !otp){
+        return res.status(404).json({
+        message: "Please provide your email and otp.",
+        error: true,
+        success: false,
+      })
+      }
+    const user = await UserModel.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        message: "User with this email does not exist.",
+        error: true,
+        success: false,
+      });
+    }
+
+    const currentTime = new Date()
+    
+    if(user.forgot_password_expiry < currentTime){
+      return res.status(404).json({
+        message: "Your password with expired due to timelimit of 1 hours.",
+        error: true,
+        success: false,
+      });
+    }
+
+    if(otp !== user.forgot_password_otp){
+      return res.status(404).json({
+        message: "Invalit OTP.",
+        error: true,
+        success: false,
+      });
+    }
+
+    //if otp is not expired
+    //if otp === user.forgot_password_otp)
+       return res.status(201).json({
+        message: "Otp verified",
+        error: false,
+        success: true,
+      });
+    
+        
+  } catch (error) {
+     return res.status(500).json({
+      message: `Internal server error in forgot password at verification: ${error.message || error}`,
+      error: true,
+      success: false,
+    });
+  }
+} 
+
+// reset the password
+export const resetPasswordController = async (req, res) => {
+  try {
+    const { email, newPassword, confirmPassword } = req.body;
+
+    // Basic validation
+    if (!email || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        message: "Please provide email, newPassword, and confirmPassword",
+        error: true,
+        success: false,
+      });
+    }
+
+    const user = await UserModel.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        message: "User with this email does not exist",
+        error: true,
+        success: false,
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        message: "newPassword and confirmPassword must be the same",
+        error: true,
+        success: false,
+      });
+    }
+
+    // Hash new password
+    const salt = await bcryptjs.genSalt(10);
+    const hashPassword = await bcryptjs.hash(newPassword, salt);
+
+    await UserModel.findByIdAndUpdate(user._id, { password: hashPassword });
+
+    return res.status(200).json({
+      message: "Password reset successfully",
+      error: false,
+      success: true,
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      message: `Internal server error in reset password: ${error.message || error}`,
+      error: true,
+      success: false,
+    });
+  }
+};
+
+//refresh token controller
+
+export const refreshTokenController = async (req, res) => {
+  try {
+    const tokenFromCookie = req.cookies.refreshToken;
+    const tokenFromHeader = req.headers?.authorization?.split(" ")[1];
+    const refreshToken = tokenFromCookie || tokenFromHeader;
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        message: "Refresh token missing. Please login again.",
+        error: true,
+        success: false,
+      });
+    }
+
+    // Verify token
+    let verifyToken;
+    try {
+      verifyToken = jwt.verify(refreshToken, process.env.SECRET_KEY_REFRESH_TOKEN);
+    } catch (err) {
+      return res.status(403).json({
+        message: "Invalid or expired refresh token. Please login again.",
+        error: true,
+        success: false,
+      });
+    }
+
+    const userId = verifyToken._id;
+
+    // Generate new access token
+    const newAccessToken = await generateAccessToken(userId);
+
+    // Set cookie
+    const cookieOptions = {
+      httpOnly: true,
+      secure: true, // set false if testing on localhost without HTTPS
+      sameSite: "None",
+    };
+    res.cookie("accessToken", newAccessToken, cookieOptions);
+
+    return res.status(200).json({
+      message: "Access token refreshed successfully.",
+      error: false,
+      success: true,
+      data: { accessToken: newAccessToken },
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      message: `Internal server error in refresh token: ${error.message || error}`,
+      error: true,
+      success: false,
     });
   }
 };
