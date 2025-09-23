@@ -444,6 +444,11 @@ export const verifyForgotPasswordOtp = async(req,res)=>{
 
     //if otp is not expired
     //if otp === user.forgot_password_otp)
+
+    const updateUser = await UserModel.findByIdAndUpdate(user?._id,{
+           forgot_password_otp : "",
+           forgot_password_expiry : ""
+    })
        return res.status(201).json({
         message: "Otp verified",
         error: false,
@@ -565,6 +570,44 @@ export const refreshTokenController = async (req, res) => {
       message: `Internal server error in refresh token: ${error.message || error}`,
       error: true,
       success: false,
+    });
+  }
+};
+
+
+
+// get login user details
+export const userDetailsController = async (req, res) => {
+  try {
+    const userId = req.userId; //  ye id tumne middleware (auth) me set ki hogi
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized - No user ID found",
+      });
+    }
+
+    const user = await UserModel.findById(userId).select("-password -refreshToken"); 
+    // password aur refreshToken ko response se exclude kar rahe
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    console.error("Error fetching user details:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching user details",
+      error: error.message,
     });
   }
 };
